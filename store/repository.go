@@ -164,3 +164,25 @@ func (r Repository) AddUser(user User) bool {
 
 	return true
 }
+
+// GetUserByUserName returns a unique Product
+func (r Repository) GetUserByUserName(id string) User {
+	session, err := mgo.Dial(SERVER)
+
+	if err != nil {
+		fmt.Println("Failed to establish connection to Mongo server:", err)
+	}
+
+	defer session.Close()
+
+	c := session.DB(DBNAME).C(USERS)
+	var result User
+
+	fmt.Println("ID in GetUserByUserName", id)
+
+	if err := c.FindId(id).One(&result); err != nil {
+		fmt.Println("Failed to write result:", err)
+	}
+
+	return result
+}

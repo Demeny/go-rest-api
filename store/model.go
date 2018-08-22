@@ -1,7 +1,7 @@
 package store
 
 type User struct {
-	ID       int    `bson:"_id"`
+	ID       string `bson:"_id"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }

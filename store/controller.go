@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -58,17 +59,23 @@ func (c *Controller) GetToken(w http.ResponseWriter, req *http.Request) {
 	var user User
 	_ = json.NewDecoder(req.Body).Decode(&user)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": user.Username,
 		"password": user.Password,
 	})
-
-	log.Println("Username: " + user.Username)
-	log.Println("Password: " + user.Password)
+	userFromDB := c.Repository.GetUserByUserName(user.Username)
+	if userFromDB.Username == "" {
+		http.Error(w, "Not authorized", 401)
+		return
+	}
 
 	tokenString, error := token.SignedString([]byte("secret"))
 	if error != nil {
 		fmt.Println(error)
 	}
+	if !comparePasswords(userFromDB.Password, []byte(user.Password)) {
+		http.Error(w, "Not authorized", 401)
+		return
+	}
+
 	json.NewEncoder(w).Encode(JwtToken{Token: tokenString})
 }
 
@@ -257,7 +264,8 @@ func (c *Controller) AddUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Println(user)
+	user.Password = hashAndSalt([]byte(user.Password))
+	user.ID = user.Username
 	success := c.Repository.AddUser(user) // adds the product to the DB
 	if !success {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -267,4 +275,27 @@ func (c *Controller) AddUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusCreated)
 	return
+}
+
+func hashAndSalt(pwd []byte) string {
+	hash, err := bcrypt.GenerateFromPassword(pwd, bcrypt.MinCost)
+	if err != nil {
+		log.Println(err)
+	}
+	// GenerateFromPassword returns a byte slice so we need to
+	// convert the bytes to a string and return it
+	return string(hash)
+}
+
+func comparePasswords(hashedPwd string, plainPwd []byte) bool {
+	// Since we'll be getting the hashed password from the DB it
+	// will be a string so we'll need to convert it to a byte slice
+	byteHash := []byte(hashedPwd)
+	err := bcrypt.CompareHashAndPassword(byteHash, plainPwd)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	return true
 }
